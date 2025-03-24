@@ -1,0 +1,107 @@
+# Workflow to build and deploy docker image
+# use these actions for docker image:
+#      https://github.com/docker/login-action/tree/v2/
+#      https://www.github.com/docker/build-push-action/tree/v4/
+# The docker image tag should be ghcr.io/${{ github.repository }}:${{github.sha}}
+# For docker login, use github.actor and secrets.GITHUB_TOKEN
+# use these actions for kubernetes:
+#      https://github.com/Azure/setup-kubectl
+#      https://github.com/Azure/setup-helm
+
+# If you see "ERROR: denied: installation not allowed to Create organization package", add permissions under runs-on:
+#  runs-on: ubuntu-latest
+#  permissions:
+#      contents: read
+#      packages: write
+
+# As you progress, only uncomment lines that are needed depending on where you are in the project.
+
+# name: Build and Deploy
+# on:
+  # add triggers here
+# jobs:
+#     build-docker-image:
+#         runs-on: ubuntu-latest
+#         permissions:
+#           contents: read
+#           packages: write
+#         steps:
+            # add steps here
+    # deploy-to-dev:
+    #     runs-on: ubuntu-latest
+    #     needs: build-docker-image
+    #     steps:
+    #       # add steps here
+
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  packages: write  # Grant write access to packages
+  contents: read   # Required for checkout
+
+jobs:
+  build-docker-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Convert repository and image name to lowercase
+        run: |
+          echo "REPO_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          # Modified tag: removed the extra "hu-modern-software-practices/" prefix.
+          tags: ghcr.io/${{ env.REPO_NAME }}:${{ github.sha }}
+
+  deploy-to-dev:
+    runs-on: ubuntu-latest
+    needs: build-docker-image
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4  # Ensure Helm charts are available
+
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Install Kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest  # Installs the latest version of kubectl
+
+      - name: Set up KUBECONFIG
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DEV }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Convert repository name to lowercase
+        run: echo "REPO_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Deploy to Development Cluster using Helm
+        run: |
+          helm upgrade --install portfolio \
+            ./helm/portfolio \
+            -n kushal-chandani-dev \
+            --set githubUsername=kushal-chandani \
+            --set environment=dev \
+            --set image.repository=ghcr.io/${{ env.REPO_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --set imagePullPolicy=Always

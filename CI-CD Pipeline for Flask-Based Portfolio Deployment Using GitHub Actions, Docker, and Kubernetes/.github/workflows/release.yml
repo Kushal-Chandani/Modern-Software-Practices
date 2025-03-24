@@ -1,0 +1,93 @@
+# TODO: Create a production release workflow
+# If you see "ERROR: denied: installation not allowed to Create organization package", add permissions under runs-on:
+#  runs-on: ubuntu-latest
+#  permissions:
+#      contents: read
+#      packages: write
+
+# As you progress, only uncomment lines that are needed depending on where you are in the project.
+
+# name: Deploy to Prod
+# on:
+#   # add triggers here
+# jobs:
+#     retag-image:
+#         runs-on: ubuntu-latest
+#         permissions:
+#           contents: read
+#           packages: write
+#         steps:
+#           # add steps here
+#     deploy-to-prod:
+#         runs-on: ubuntu-latest
+#         needs: retag-image
+#         steps:
+#           # add steps here
+
+name: Production Deployment
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  tag-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Fetch Codebase
+        uses: actions/checkout@v4
+
+      - name: Authenticate with GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Format Repository Name (Lowercase)
+        run: echo "REPO_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Download Existing Image
+        run: docker pull ghcr.io/${{ env.REPO_NAME }}:${{ github.sha }}
+
+      - name: Apply Release Tag to Image
+        run: docker tag ghcr.io/${{ env.REPO_NAME }}:${{ github.sha }} ghcr.io/${{ env.REPO_NAME }}:${{ github.ref_name }}
+
+      - name: Upload Tagged Image to Registry
+        run: docker push ghcr.io/${{ env.REPO_NAME }}:${{ github.ref_name }}
+
+  rollout:
+    runs-on: ubuntu-latest
+    needs: tag-image
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Fetch Codebase
+        uses: actions/checkout@v4
+
+      - name: Install Helm Package Manager
+        run: |
+          curl -L https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Configure Kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Set Up Kubernetes Context
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PROD }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy Application with Helm
+        run: |
+          helm upgrade --install portfolio ./helm/portfolio \
+            --namespace kushal-chandani-prod \
+            --set containerRegistry=ghcr.io/${{ env.REPO_NAME }} \
+            --set tag=${{ github.ref_name }} \
+            --set imagepullPolicy=Always \
+            --set githubUser=${{ github.actor }} \
+            --set environment=prod \
+

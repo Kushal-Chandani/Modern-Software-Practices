@@ -1,0 +1,25 @@
+replicaCount: 1
+
+githubUsername: kushal-chandani
+environment: dev
+
+image:
+  repository: ghcr.io/project-4-kushal-chandani/portfolio
+  tag: latest
+
+containerPort: 5000
+
+service:
+  type: ClusterIP  # Change to LoadBalancer or NodePort as needed
+  port: 80         # Service port
+  targetPort: 5000 # Container port (Flask default)
+
+# DO NOT MODIFY BELOW THIS LINE
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+# DO NOT MODIFY ABOVE THIS LINE
