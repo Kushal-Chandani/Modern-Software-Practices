@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package WeatherAdvisory;
+
+service WeatherAdvisory {
+    rpc GetAirQuality (AirQualityRequest) returns (AirQualityResponse);
+    rpc GetWeather (WeatherRequest) returns (WeatherResponse);
+    rpc GetTravelRecommendation (TravelRequest) returns (TravelRecommendationResponse);
+}
+
+message AirQualityRequest {
+    string city = 1;
+}
+
+message AirQualityResponse {
+    string city = 1;
+    string air_quality = 2;
+    string message = 3;
+}
+
+message WeatherRequest {
+    string city = 1;
+}
+
+message WeatherResponse {
+    string city = 1;
+    float temperature = 2;
+    string description = 3;
+}
+
+message TravelRequest {
+    string city = 1;
+}
+
+message TravelRecommendationResponse {
+    string city = 1;
+    string recommendation = 2;
+}
